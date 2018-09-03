@@ -1,2 +1,5 @@
-# fellrace-finder-poller
-Console app to update with new races
+# To Get Race Data
+go run main.go
+
+# Run tests
+go test -v ./parseresults
