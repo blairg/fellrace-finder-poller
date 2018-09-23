@@ -49,7 +49,7 @@ func ParseResult(resultName, htmlContent string) Result {
 	return result
 }
 
-func isValidNode(node string) bool {
+func isValidResultNode(node string) bool {
 	switch node {
 	case
 		"h2",
@@ -71,7 +71,7 @@ func processResult(node *html.Node, result *Result) {
 }
 
 func parseResultDetails(node *html.Node, result *Result) {
-	if (node.Type == html.ElementNode) && isValidNode(node.Data) {
+	if (node.Type == html.ElementNode) && isValidResultNode(node.Data) {
 		for _, attribute := range node.Attr {
 			if attribute.Key == "class" || attribute.Key == "id" {
 				if attribute.Val == "title_committee" && node.FirstChild.Data != "Sponsors" {

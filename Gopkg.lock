@@ -3,6 +3,12 @@
 
 [[projects]]
   branch = "master"
+  name = "github.com/araddon/dateparse"
+  packages = ["."]
+  revision = "cfd92a431d0efe36a1b81ca25d15b98aae4dbdb6"
+
+[[projects]]
+  branch = "master"
   name = "github.com/globalsign/mgo"
   packages = [
     ".",
@@ -31,6 +37,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "327e6a83665b17a8569071a644266691188e30c575ae196f67322daadcb8c97e"
+  inputs-digest = "b299d5780c539886769419f2f1ca1e94ab9832e481d5dce86a210ce6d0e319b9"
   solver-name = "gps-cdcl"
   solver-version = 1

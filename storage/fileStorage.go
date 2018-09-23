@@ -1,7 +1,6 @@
 package storage
 
 import (
-	"fmt"
 	"io/ioutil"
 	"os"
 	"strings"
@@ -22,7 +21,7 @@ func Store(filename, path string, html string) {
 			err := ioutil.WriteFile(fullPath, d1, 0644)
 			check(err)
 		} else {
-			fmt.Println("already exists - " + fullPath)
+			//fmt.Println("already exists - " + fullPath)
 		}
 	} else {
 		emptyFile := []byte("")

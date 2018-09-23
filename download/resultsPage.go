@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-// GetResults grabs the race results
+// GetFellRunnerResults grabs the race results
 func GetFellRunnerResults() (htmlResponse string, success bool) {
 	htmlResponse = ""
 	success = false
@@ -22,6 +22,33 @@ func GetFellRunnerResults() (htmlResponse string, success bool) {
 		return
 	}
 
+	response := getHTMLResponse(resultsPageURL)
+	htmlResponse = handleResultsResponse(response, resultsPageURL, "Search for a race")
+	success = true
+
+	return htmlResponse, success
+}
+
+// GetFellRunnerRaces grabs the race results
+func GetFellRunnerRaces() (htmlResponse string, success bool) {
+	htmlResponse = ""
+	success = false
+	racePageURL := os.Getenv("RACE_PAGE_URL")
+
+	if racePageURL == "" {
+		fmt.Println("RACE_PAGE_URL not found")
+
+		return
+	}
+
+	response := getHTMLResponse(racePageURL)
+	htmlResponse = handleResultsResponse(response, racePageURL, "Races this month")
+	success = true
+
+	return htmlResponse, success
+}
+
+func getHTMLResponse(url string) *http.Response {
 	var netTransport = &http.Transport{
 		Dial: (&net.Dialer{
 			Timeout: 5 * time.Second,
@@ -33,21 +60,18 @@ func GetFellRunnerResults() (htmlResponse string, success bool) {
 		Transport: netTransport,
 	}
 
-	response, error := netClient.Get(resultsPageURL)
+	response, error := netClient.Get(url)
 
 	if error != nil {
 		fmt.Println(error)
 
-		return
+		return nil
 	}
 
-	htmlResponse = handleResultsResponse(response, resultsPageURL)
-	success = true
-
-	return htmlResponse, success
+	return response
 }
 
-func handleResultsResponse(response *http.Response, urlToGet string) string {
+func handleResultsResponse(response *http.Response, urlToGet, textToLookFor string) string {
 	if response.StatusCode != 200 {
 		fmt.Println("Failed for " + urlToGet)
 
@@ -63,7 +87,7 @@ func handleResultsResponse(response *http.Response, urlToGet string) string {
 
 	bodyAsString := string(body)
 
-	if !strings.Contains(bodyAsString, "Search for a race") {
+	if !strings.Contains(bodyAsString, textToLookFor) {
 		return ""
 	}
 
