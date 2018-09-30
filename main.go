@@ -21,26 +21,26 @@ var races []parseresults.Race
 func main() {
 	app := cli.NewApp()
 	app.Name = "fellrace-poller"
-	app.Usage = "Downloads the results from http://www.fellrunner.org.uk/results.php"
+	app.Usage = "Downloads the races and results from https://fellrunner.org.uk"
 	app.Action = func(c *cli.Context) error {
 		// Results
-		var resultsWaitGroup sync.WaitGroup
-		resultsWaitGroup.Add(1)
+		// var resultsWaitGroup sync.WaitGroup
+		// resultsWaitGroup.Add(1)
 
-		go func() {
-			defer resultsWaitGroup.Done()
+		// go func() {
+		// 	defer resultsWaitGroup.Done()
 
-			getResults()
+		// 	getResults()
 
-			fmt.Println("Going to store " + strconv.Itoa(len(results)) + " results")
+		// 	fmt.Println("Going to store " + strconv.Itoa(len(results)) + " results")
 
-			if len(results) > 0 {
-				storage.StoreManyResults(results)
-			}
+		// 	if len(results) > 0 {
+		// 		storage.StoreManyResults(results)
+		// 	}
 
-			fmt.Println("Finished getting results")
-		}()
-		resultsWaitGroup.Wait()
+		// 	fmt.Println("Finished getting results")
+		// }()
+		// resultsWaitGroup.Wait()
 
 		// Races
 		var racesWaitGroup sync.WaitGroup
@@ -153,12 +153,14 @@ func getRaces() {
 		fmt.Println("Failed to get races")
 
 		return
-	} else {
-		fmt.Println("Races found")
 	}
+
+	fmt.Println("Races found")
 
 	raceLinks := parseresults.GetRaceLinks(resultsHTML)
 	fmt.Println(raceLinks)
+
+	raceLinks = checkForRacePagination(raceLinks)
 
 	newRaceIds := storage.FilterIds(raceLinks, "raceinfo")
 	fmt.Println(newRaceIds)
@@ -184,6 +186,38 @@ func getRaces() {
 	wg.Wait()
 }
 
+func checkForRacePagination(raceLinks []string) []string {
+	// Check if results are paginated
+	for i := 2; i < 1000000; i++ {
+		resultsHTML := ""
+		success := false
+		var wg sync.WaitGroup
+		wg.Add(1)
+
+		go func(i int) {
+			defer wg.Done()
+			resultsHTML, success = download.GetRacePageList(i)
+		}(i)
+		wg.Wait()
+
+		if !success {
+			fmt.Println("Failed to get race page " + strconv.Itoa(i))
+
+			break
+		}
+
+		fmt.Println("Races found for page " + strconv.Itoa(i))
+
+		raceLinksFound := parseresults.GetRaceLinks(resultsHTML)
+
+		for _, link := range raceLinksFound {
+			raceLinks = append(raceLinks, link)
+		}
+	}
+
+	return raceLinks
+}
+
 func getAndStoreRace(raceID int) {
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -200,8 +234,8 @@ func downloadAndStoreRaceFiles(raceID int) {
 	raceIDString := strconv.Itoa(raceID)
 	pathToSaveTo := "./races/"
 	emptyPathToSaveTo := "./noRace/"
-	//fileExtension := ".html"
-	//fileLocation := pathToSaveTo + raceIDString + fileExtension
+	// fileExtension := ".html"
+	// fileLocation := pathToSaveTo + raceIDString + fileExtension
 	resultsHTML, success := download.GetRace("https://fellrunner.org.uk/races.php?id=", raceID)
 
 	if resultsHTML != "" {

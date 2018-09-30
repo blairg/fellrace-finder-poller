@@ -80,7 +80,7 @@ func ParseRace(raceID, htmlContent string) Race {
 	// race.SkillsExperience = parsedRace.SkillsExperience
 	// race.MinimumAge = parsedRace.MinimumAge
 	// race.EntryFee = parsedRace.EntryFee
-	// race.Records = parsedRace.Records
+	race.Records = parsedRace.Records
 
 	//fmt.Println(race)
 
@@ -322,12 +322,92 @@ func getClimb(isClimb *bool, race *Race, token html.Token) climb {
 
 //
 
+// Records
+func splitRecordToken(r rune) bool {
+	return r == '$'
+}
+
+func splitRecords(recordToSplit string) recordDetails {
+	var recordDetailsType recordDetails
+
+	if strings.Contains(recordToSplit, "No record information") {
+		return recordDetailsType
+	}
+
+	trimmedRecord := strings.TrimRight(strings.TrimLeft(recordToSplit, " "), " ")
+	trimmedRecord = strings.Replace(trimmedRecord, "\n", "", -1)
+	trimmedRecord = strings.Replace(trimmedRecord, "\t", "", -1)
+	trimmedRecord = strings.Replace(trimmedRecord, " – ", "$", -1)
+	recordSplit := strings.FieldsFunc(trimmedRecord, splitRecordToken)
+
+	if len(recordSplit) == 3 {
+		recordDetailsType.Name = strings.TrimRight(strings.TrimLeft(recordSplit[0], " "), " ")
+		recordDetailsType.Time = strings.TrimRight(strings.TrimLeft(recordSplit[1], " "), " ")
+		yearParsed, _ := strconv.ParseInt(strings.TrimRight(strings.TrimLeft(recordSplit[2], " "), " "), 10, 32)
+		recordDetailsType.Year = int(yearParsed)
+	}
+
+	return recordDetailsType
+}
+
+func isFemaleRecord(token html.Token) bool {
+	if strings.Contains(token.Data, "Female:") {
+		return true
+	}
+
+	return false
+}
+
+func isMaleRecord(token html.Token) bool {
+	if strings.Contains(token.Data, "Male:") {
+		return true
+	}
+
+	return false
+}
+
+func getFemaleRecord(isRecord *bool, race *Race, token html.Token) recordDetails {
+	var femaleRecord recordDetails
+
+	if *isRecord && race.Records.Female.Name == "" {
+		*isRecord = false
+
+		return splitRecords(token.Data)
+	}
+
+	if !*isRecord && race.Records.Female.Name != "" {
+		return race.Records.Female
+	}
+
+	return femaleRecord
+}
+
+func getMaleRecord(isRecord *bool, race *Race, token html.Token) recordDetails {
+	var maleRecord recordDetails
+
+	if *isRecord && race.Records.Male.Name == "" {
+		*isRecord = false
+
+		return splitRecords(token.Data)
+	}
+
+	if !*isRecord && race.Records.Male.Name != "" {
+		return race.Records.Male
+	}
+
+	return maleRecord
+}
+
+//
+
 func parseHTML(r io.Reader, race *Race) {
 	d := html.NewTokenizer(r)
 	isRaceName := false
 	isDateAndTime := false
 	isDistanceFound := false
 	isClimbFound := false
+	isFemaleRecordFound := false
+	isMaleRecordFound := false
 
 	for {
 		tokenType := d.Next()
@@ -380,6 +460,30 @@ func parseHTML(r io.Reader, race *Race) {
 					race.Climb.Feet = climb.Feet
 
 					isClimbFound = false
+				}
+			}
+
+			// Records - Female
+			if isFemaleRecord(token) {
+				isFemaleRecordFound = true
+			} else {
+				if isFemaleRecordFound == true {
+					femaleRecord := getFemaleRecord(&isFemaleRecordFound, race, token)
+					race.Records.Female = femaleRecord
+
+					isFemaleRecordFound = false
+				}
+			}
+
+			// Records - Male
+			if isMaleRecord(token) {
+				isMaleRecordFound = true
+			} else {
+				if isMaleRecordFound == true {
+					maleRecord := getMaleRecord(&isMaleRecordFound, race, token)
+					race.Records.Male = maleRecord
+
+					isMaleRecordFound = false
 				}
 			}
 
