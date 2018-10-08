@@ -11,7 +11,7 @@ import (
 )
 
 // GetRace Runs a HTTP GET Request at an endpoint and returns the value
-func GetRace(raceID int) (htmlResponse string, success bool) {
+func GetRace(raceURL string, raceID int) (htmlResponse string, success bool) {
 	htmlResponse = ""
 	success = false
 	var netTransport = &http.Transport{
@@ -25,7 +25,7 @@ func GetRace(raceID int) (htmlResponse string, success bool) {
 		Transport: netTransport,
 	}
 
-	urlToGet := "http://www.fellrunner.org.uk/results.php?id=" + strconv.Itoa(raceID)
+	urlToGet := raceURL + strconv.Itoa(raceID)
 
 	response, error := netClient.Get(urlToGet)
 
@@ -42,7 +42,7 @@ func GetRace(raceID int) (htmlResponse string, success bool) {
 
 func handleResponse(response *http.Response, urlToGet string) string {
 	if response.StatusCode != 200 {
-		fmt.Println("Failed for " + urlToGet)
+		fmt.Println("Failed for " + urlToGet + strconv.Itoa(response.StatusCode))
 
 		return ""
 	}

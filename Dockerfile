@@ -16,7 +16,8 @@ FROM alpine:latest
 
 ARG MONGO_DB_URL
 ENV MONGO_DB_URL ${MONGO_DB_URL}
-ENV RESULTS_PAGE_URL=http://www.fellrunner.org.uk/results.php
+ENV RESULTS_PAGE_URL=https://fellrunner.org.uk/results.php
+ENV RACE_PAGE_URL=https://fellrunner.org.uk/races.php
 
 WORKDIR /root/
 
