@@ -23,24 +23,24 @@ func main() {
 	app.Name = "fellrace-poller"
 	app.Usage = "Downloads the races and results from https://fellrunner.org.uk"
 	app.Action = func(c *cli.Context) error {
-		// Results
-		// var resultsWaitGroup sync.WaitGroup
-		// resultsWaitGroup.Add(1)
+		//Results
+		var resultsWaitGroup sync.WaitGroup
+		resultsWaitGroup.Add(1)
 
-		// go func() {
-		// 	defer resultsWaitGroup.Done()
+		go func() {
+			defer resultsWaitGroup.Done()
 
-		// 	getResults()
+			getResults()
 
-		// 	fmt.Println("Going to store " + strconv.Itoa(len(results)) + " results")
+			fmt.Println("Going to store " + strconv.Itoa(len(results)) + " results")
 
-		// 	if len(results) > 0 {
-		// 		storage.StoreManyResults(results)
-		// 	}
+			if len(results) > 0 {
+				storage.StoreManyResults(results)
+			}
 
-		// 	fmt.Println("Finished getting results")
-		// }()
-		// resultsWaitGroup.Wait()
+			fmt.Println("Finished getting results")
+		}()
+		resultsWaitGroup.Wait()
 
 		// Races
 		var racesWaitGroup sync.WaitGroup
