@@ -48,3 +48,7 @@
 [[constraint]]
   branch = "master"
   name = "github.com/araddon/dateparse"
+
+[[constraint]]
+  branch = "master"
+  name = "googlemaps.github.io/maps"

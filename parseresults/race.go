@@ -1,14 +1,27 @@
 package parseresults
 
 import (
+	"bytes"
 	"fmt"
+	"image"
+	"image/png"
 	"io"
+	"io/ioutil"
 	"strconv"
 	"strings"
 	"sync"
 
+	"googlemaps.github.io/maps"
+
 	"golang.org/x/net/html"
+
+	"github.com/blairg/fellrace-finder-poller/googlemaps"
 )
+
+type geoLocationSearch struct {
+	geoLocation maps.LatLng `json:"geoLocation"`
+	address     string      `json:"address"`
+}
 
 type distance struct {
 	Kilometers float32 `json:"kilometres"`
@@ -48,7 +61,8 @@ type Race struct {
 	Website          string   `json:"website"`
 	Distance         distance `json:"distance"`
 	Climb            climb    `json:"climb"`
-	Venue            []string `json:"venue"`
+	Venue            string   `json:"venue"`
+	GMapImageURL     string   `json:"gmapImageUrl"`
 	GridReference    string   `json:"gridReference"`
 	SkillsExperience string   `json:"skillsExperience"`
 	MinimumAge       int      `json:"minimumAge"`
@@ -75,7 +89,8 @@ func ParseRace(raceID, htmlContent string) Race {
 	// race.Website = parsedRace.Website
 	race.Distance = parsedRace.Distance
 	race.Climb = parsedRace.Climb
-	// race.Venue = parsedRace.Venue
+	race.Venue = parsedRace.Venue
+	race.GMapImageURL = parsedRace.GMapImageURL
 	// race.GridReference = parsedRace.GridReference
 	// race.SkillsExperience = parsedRace.SkillsExperience
 	// race.MinimumAge = parsedRace.MinimumAge
@@ -400,6 +415,41 @@ func getMaleRecord(isRecord *bool, race *Race, token html.Token) recordDetails {
 
 //
 
+// Venue
+func splitVenue(venueToSplit string) string {
+	trimmedVenue := strings.TrimRight(strings.TrimLeft(venueToSplit, " "), " ")
+	trimmedVenue = strings.Replace(trimmedVenue, "\n", "", -1)
+	trimmedVenue = strings.Replace(trimmedVenue, "\t", "", -1)
+
+	return trimmedVenue
+}
+
+func isVenue(token html.Token) bool {
+	if strings.Contains(token.Data, "Venue:") {
+		return true
+	}
+
+	return false
+}
+
+func getVenue(isVenue *bool, race *Race, token html.Token) string {
+	var venue string
+
+	if *isVenue && race.Venue == "" {
+		*isVenue = false
+
+		return splitVenue(token.Data)
+	}
+
+	if !*isVenue && race.Venue != "" {
+		return race.Venue
+	}
+
+	return venue
+}
+
+//
+
 func parseHTML(r io.Reader, race *Race) {
 	d := html.NewTokenizer(r)
 	isRaceName := false
@@ -408,6 +458,7 @@ func parseHTML(r io.Reader, race *Race) {
 	isClimbFound := false
 	isFemaleRecordFound := false
 	isMaleRecordFound := false
+	isVenueFound := false
 
 	for {
 		tokenType := d.Next()
@@ -487,9 +538,59 @@ func parseHTML(r io.Reader, race *Race) {
 				}
 			}
 
+			// Venue
+			if isVenue(token) {
+				isVenueFound = true
+			} else {
+				if isVenueFound == true {
+					venue := getVenue(&isVenueFound, race, token)
+					race.Venue = venue
+
+					geoLocationChannel := make(chan geoLocationSearch)
+					go getCoordinates(venue, geoLocationChannel)
+					geoLocationResult := <-geoLocationChannel
+					//fmt.Println(geoLocationResult)
+
+					staticMapChannel := make(chan image.Image)
+					go getStaticMap(geoLocationResult.address, geoLocationResult.geoLocation, staticMapChannel)
+					staticMapResult := <-staticMapChannel
+
+					// create buffer
+					buff := new(bytes.Buffer)
+
+					// encode image to buffer
+					err := png.Encode(buff, staticMapResult)
+
+					if err != nil {
+						fmt.Println("failed to create buffer", err)
+					}
+
+					err = ioutil.WriteFile("./testfilebg.png", buff.Bytes(), 0644)
+
+					if err != nil {
+						fmt.Println("failed to write", err)
+					}
+
+					isVenueFound = false
+				}
+			}
+
 		case html.EndTagToken: // </tag>
 		case html.SelfClosingTagToken: // <tag/>
 
 		}
 	}
+}
+
+func getCoordinates(address string, geoLocationChannel chan geoLocationSearch) {
+	var geoSearch geoLocationSearch
+	coordinatesResult, addressResult := googlemaps.GetCoordinates(address)
+	geoSearch.geoLocation = coordinatesResult
+	geoSearch.address = addressResult
+
+	geoLocationChannel <- geoSearch
+}
+
+func getStaticMap(address string, location maps.LatLng, staticMapChannel chan image.Image) {
+	staticMapChannel <- googlemaps.GetStaticMap(address, location)
 }
