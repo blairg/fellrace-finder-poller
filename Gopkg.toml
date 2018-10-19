@@ -52,3 +52,7 @@
 [[constraint]]
   branch = "master"
   name = "googlemaps.github.io/maps"
+
+[[constraint]]
+  name = "cloud.google.com/go"
+  version = "0.30.0"

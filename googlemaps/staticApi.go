@@ -27,7 +27,9 @@ func GetStaticMap(address string, location maps.LatLng) image.Image {
 	client, err = maps.NewClient(maps.WithAPIKey(apiKey))
 
 	if err != nil {
-		log.Fatalf("fatal error: %s", err)
+		fmt.Println("error getting static map: ", err)
+
+		return nil
 	}
 
 	var marker maps.Marker
@@ -50,6 +52,8 @@ func GetStaticMap(address string, location maps.LatLng) image.Image {
 
 	if err != nil {
 		log.Fatalf("fatal error: %s", err)
+
+		return nil
 	}
 
 	return mapImageResult

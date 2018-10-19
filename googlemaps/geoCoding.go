@@ -2,7 +2,6 @@ package googlemaps
 
 import (
 	"fmt"
-	"log"
 	"os"
 
 	"golang.org/x/net/context"
@@ -24,17 +23,26 @@ func GetCoordinates(address string) (maps.LatLng, string) {
 	client, err := maps.NewClient(maps.WithAPIKey(apiKey))
 
 	if err != nil {
-		log.Fatalf("fatal error: %s", err)
+		fmt.Println("error connecting to GEO API: ", err)
+
+		return location, ""
 	}
 
 	r := &maps.GeocodingRequest{
 		Address: address,
+		Region:  "GB",
 	}
 
 	geoResult, err := client.Geocode(context.Background(), r)
 
 	if err != nil {
-		log.Fatalf("fatal error: %s", err)
+		fmt.Println("error getting GEO data: ", err)
+
+		return location, ""
+	}
+
+	if len(geoResult) == 0 {
+		return location, ""
 	}
 
 	return geoResult[0].Geometry.Location, geoResult[0].FormattedAddress

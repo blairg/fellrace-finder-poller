@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/blairg/fellrace-finder-poller/googlebucket"
+
 	"googlemaps.github.io/maps"
 
 	"golang.org/x/net/html"
@@ -19,8 +21,8 @@ import (
 )
 
 type geoLocationSearch struct {
-	geoLocation maps.LatLng `json:"geoLocation"`
-	address     string      `json:"address"`
+	geoLocation maps.LatLng
+	address     string
 }
 
 type distance struct {
@@ -49,25 +51,31 @@ type records struct {
 	Female recordDetails `json:"female"`
 }
 
+type geoLocation struct {
+	Latitude  float64 `json:"latitude"`
+	Longitude float64 `json:"longitude"`
+}
+
 // Race type
 type Race struct {
-	ID               int      `json:"id"`
-	Name             string   `json:"name"`
-	Date             string   `json:"date"`
-	Time             string   `json:"time"`
-	Country          string   `json:"country"`
-	Region           string   `json:"region"`
-	Category         string   `json:"category"`
-	Website          string   `json:"website"`
-	Distance         distance `json:"distance"`
-	Climb            climb    `json:"climb"`
-	Venue            string   `json:"venue"`
-	GMapImageURL     string   `json:"gmapImageUrl"`
-	GridReference    string   `json:"gridReference"`
-	SkillsExperience string   `json:"skillsExperience"`
-	MinimumAge       int      `json:"minimumAge"`
-	EntryFee         entryFee `json:"entryFee"`
-	Records          records  `json:"records"`
+	ID               int         `json:"id"`
+	Name             string      `json:"name"`
+	Date             string      `json:"date"`
+	Time             string      `json:"time"`
+	Country          string      `json:"country"`
+	Region           string      `json:"region"`
+	Category         string      `json:"category"`
+	Website          string      `json:"website"`
+	Distance         distance    `json:"distance"`
+	Climb            climb       `json:"climb"`
+	Venue            string      `json:"venue"`
+	GeoLocation      geoLocation `json:"geoLocation"`
+	GMapImageURL     string      `json:"gmapImageUrl"`
+	GridReference    string      `json:"gridReference"`
+	SkillsExperience string      `json:"skillsExperience"`
+	MinimumAge       int         `json:"minimumAge"`
+	EntryFee         entryFee    `json:"entryFee"`
+	Records          records     `json:"records"`
 }
 
 // ParseRace extracts the races from the HTML
@@ -76,6 +84,7 @@ func ParseRace(raceID, htmlContent string) Race {
 	raceReader := strings.NewReader(htmlContent)
 
 	var parsedRace Race
+	parsedRace.ID = int(raceIDParsed)
 	processRace(raceReader, &parsedRace)
 
 	var race Race
@@ -90,6 +99,7 @@ func ParseRace(raceID, htmlContent string) Race {
 	race.Distance = parsedRace.Distance
 	race.Climb = parsedRace.Climb
 	race.Venue = parsedRace.Venue
+	race.GeoLocation = parsedRace.GeoLocation
 	race.GMapImageURL = parsedRace.GMapImageURL
 	// race.GridReference = parsedRace.GridReference
 	// race.SkillsExperience = parsedRace.SkillsExperience
@@ -543,32 +553,35 @@ func parseHTML(r io.Reader, race *Race) {
 				isVenueFound = true
 			} else {
 				if isVenueFound == true {
+
+					// @TODO: Pull this into a function
 					venue := getVenue(&isVenueFound, race, token)
 					race.Venue = venue
 
 					geoLocationChannel := make(chan geoLocationSearch)
 					go getCoordinates(venue, geoLocationChannel)
 					geoLocationResult := <-geoLocationChannel
-					//fmt.Println(geoLocationResult)
 
-					staticMapChannel := make(chan image.Image)
-					go getStaticMap(geoLocationResult.address, geoLocationResult.geoLocation, staticMapChannel)
-					staticMapResult := <-staticMapChannel
+					if geoLocationResult.address != "" {
+						race.GeoLocation.Latitude = geoLocationResult.geoLocation.Lat
+						race.GeoLocation.Longitude = geoLocationResult.geoLocation.Lng
 
-					// create buffer
-					buff := new(bytes.Buffer)
+						staticMapChannel := make(chan image.Image)
+						go getStaticMap(geoLocationResult.address, geoLocationResult.geoLocation, staticMapChannel)
+						staticMapImage := <-staticMapChannel
 
-					// encode image to buffer
-					err := png.Encode(buff, staticMapResult)
+						if staticMapImage != nil {
+							storeChannel := make(chan bool)
+							imageName := strconv.Itoa(race.ID) + ".png"
+							go storeImage(imageName, staticMapImage, storeChannel)
+							stored := <-storeChannel
 
-					if err != nil {
-						fmt.Println("failed to create buffer", err)
-					}
-
-					err = ioutil.WriteFile("./testfilebg.png", buff.Bytes(), 0644)
-
-					if err != nil {
-						fmt.Println("failed to write", err)
+							if !stored {
+								fmt.Println("Failed to upload " + imageName)
+							} else {
+								race.GMapImageURL = "https://storage.googleapis.com/fellrace-finder/maps/" + imageName
+							}
+						}
 					}
 
 					isVenueFound = false
@@ -593,4 +606,26 @@ func getCoordinates(address string, geoLocationChannel chan geoLocationSearch) {
 
 func getStaticMap(address string, location maps.LatLng, staticMapChannel chan image.Image) {
 	staticMapChannel <- googlemaps.GetStaticMap(address, location)
+}
+
+// StoreImage stores an image to the filesystem and the bucket
+func storeImage(filename string, image image.Image, storeChannel chan bool) {
+	buff := new(bytes.Buffer)
+
+	// encode image to buffer
+	err := png.Encode(buff, image)
+
+	if err != nil {
+		storeChannel <- false
+		fmt.Println("failed to create buffer for image "+filename, err)
+	}
+
+	err = ioutil.WriteFile("./"+filename, buff.Bytes(), 0644)
+
+	if err != nil {
+		storeChannel <- false
+		fmt.Println("failed to write for image "+filename, err)
+	}
+
+	storeChannel <- googlebucket.StoreObject(filename, filename)
 }
