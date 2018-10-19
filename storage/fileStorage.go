@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// Store a html recipe file to the filesystem
+// Store a html file to the filesystem
 func Store(filename, path string, html string) {
 	fullPath := buildFilename(filename, path)
 	lastIndexOfSlash := strings.LastIndex(fullPath, "/")

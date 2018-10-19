@@ -1,14 +1,29 @@
 package parseresults
 
 import (
+	"bytes"
 	"fmt"
+	"image"
+	"image/png"
 	"io"
+	"io/ioutil"
 	"strconv"
 	"strings"
 	"sync"
 
+	"github.com/blairg/fellrace-finder-poller/googlebucket"
+
+	"googlemaps.github.io/maps"
+
 	"golang.org/x/net/html"
+
+	"github.com/blairg/fellrace-finder-poller/googlemaps"
 )
+
+type geoLocationSearch struct {
+	geoLocation maps.LatLng
+	address     string
+}
 
 type distance struct {
 	Kilometers float32 `json:"kilometres"`
@@ -36,24 +51,31 @@ type records struct {
 	Female recordDetails `json:"female"`
 }
 
+type geoLocation struct {
+	Latitude  float64 `json:"latitude"`
+	Longitude float64 `json:"longitude"`
+}
+
 // Race type
 type Race struct {
-	ID               int      `json:"id"`
-	Name             string   `json:"name"`
-	Date             string   `json:"date"`
-	Time             string   `json:"time"`
-	Country          string   `json:"country"`
-	Region           string   `json:"region"`
-	Category         string   `json:"category"`
-	Website          string   `json:"website"`
-	Distance         distance `json:"distance"`
-	Climb            climb    `json:"climb"`
-	Venue            []string `json:"venue"`
-	GridReference    string   `json:"gridReference"`
-	SkillsExperience string   `json:"skillsExperience"`
-	MinimumAge       int      `json:"minimumAge"`
-	EntryFee         entryFee `json:"entryFee"`
-	Records          records  `json:"records"`
+	ID               int         `json:"id"`
+	Name             string      `json:"name"`
+	Date             string      `json:"date"`
+	Time             string      `json:"time"`
+	Country          string      `json:"country"`
+	Region           string      `json:"region"`
+	Category         string      `json:"category"`
+	Website          string      `json:"website"`
+	Distance         distance    `json:"distance"`
+	Climb            climb       `json:"climb"`
+	Venue            string      `json:"venue"`
+	GeoLocation      geoLocation `json:"geoLocation"`
+	GMapImageURL     string      `json:"gmapImageUrl"`
+	GridReference    string      `json:"gridReference"`
+	SkillsExperience string      `json:"skillsExperience"`
+	MinimumAge       int         `json:"minimumAge"`
+	EntryFee         entryFee    `json:"entryFee"`
+	Records          records     `json:"records"`
 }
 
 // ParseRace extracts the races from the HTML
@@ -62,6 +84,7 @@ func ParseRace(raceID, htmlContent string) Race {
 	raceReader := strings.NewReader(htmlContent)
 
 	var parsedRace Race
+	parsedRace.ID = int(raceIDParsed)
 	processRace(raceReader, &parsedRace)
 
 	var race Race
@@ -75,7 +98,9 @@ func ParseRace(raceID, htmlContent string) Race {
 	// race.Website = parsedRace.Website
 	race.Distance = parsedRace.Distance
 	race.Climb = parsedRace.Climb
-	// race.Venue = parsedRace.Venue
+	race.Venue = parsedRace.Venue
+	race.GeoLocation = parsedRace.GeoLocation
+	race.GMapImageURL = parsedRace.GMapImageURL
 	// race.GridReference = parsedRace.GridReference
 	// race.SkillsExperience = parsedRace.SkillsExperience
 	// race.MinimumAge = parsedRace.MinimumAge
@@ -400,6 +425,41 @@ func getMaleRecord(isRecord *bool, race *Race, token html.Token) recordDetails {
 
 //
 
+// Venue
+func splitVenue(venueToSplit string) string {
+	trimmedVenue := strings.TrimRight(strings.TrimLeft(venueToSplit, " "), " ")
+	trimmedVenue = strings.Replace(trimmedVenue, "\n", "", -1)
+	trimmedVenue = strings.Replace(trimmedVenue, "\t", "", -1)
+
+	return trimmedVenue
+}
+
+func isVenue(token html.Token) bool {
+	if strings.Contains(token.Data, "Venue:") {
+		return true
+	}
+
+	return false
+}
+
+func getVenue(isVenue *bool, race *Race, token html.Token) string {
+	var venue string
+
+	if *isVenue && race.Venue == "" {
+		*isVenue = false
+
+		return splitVenue(token.Data)
+	}
+
+	if !*isVenue && race.Venue != "" {
+		return race.Venue
+	}
+
+	return venue
+}
+
+//
+
 func parseHTML(r io.Reader, race *Race) {
 	d := html.NewTokenizer(r)
 	isRaceName := false
@@ -408,6 +468,7 @@ func parseHTML(r io.Reader, race *Race) {
 	isClimbFound := false
 	isFemaleRecordFound := false
 	isMaleRecordFound := false
+	isVenueFound := false
 
 	for {
 		tokenType := d.Next()
@@ -487,9 +548,84 @@ func parseHTML(r io.Reader, race *Race) {
 				}
 			}
 
+			// Venue
+			if isVenue(token) {
+				isVenueFound = true
+			} else {
+				if isVenueFound == true {
+
+					// @TODO: Pull this into a function
+					venue := getVenue(&isVenueFound, race, token)
+					race.Venue = venue
+
+					geoLocationChannel := make(chan geoLocationSearch)
+					go getCoordinates(venue, geoLocationChannel)
+					geoLocationResult := <-geoLocationChannel
+
+					if geoLocationResult.address != "" {
+						race.GeoLocation.Latitude = geoLocationResult.geoLocation.Lat
+						race.GeoLocation.Longitude = geoLocationResult.geoLocation.Lng
+
+						staticMapChannel := make(chan image.Image)
+						go getStaticMap(geoLocationResult.address, geoLocationResult.geoLocation, staticMapChannel)
+						staticMapImage := <-staticMapChannel
+
+						if staticMapImage != nil {
+							storeChannel := make(chan bool)
+							imageName := strconv.Itoa(race.ID) + ".png"
+							go storeImage(imageName, staticMapImage, storeChannel)
+							stored := <-storeChannel
+
+							if !stored {
+								fmt.Println("Failed to upload " + imageName)
+							} else {
+								race.GMapImageURL = "https://storage.googleapis.com/fellrace-finder/maps/" + imageName
+							}
+						}
+					}
+
+					isVenueFound = false
+				}
+			}
+
 		case html.EndTagToken: // </tag>
 		case html.SelfClosingTagToken: // <tag/>
 
 		}
 	}
+}
+
+func getCoordinates(address string, geoLocationChannel chan geoLocationSearch) {
+	var geoSearch geoLocationSearch
+	coordinatesResult, addressResult := googlemaps.GetCoordinates(address)
+	geoSearch.geoLocation = coordinatesResult
+	geoSearch.address = addressResult
+
+	geoLocationChannel <- geoSearch
+}
+
+func getStaticMap(address string, location maps.LatLng, staticMapChannel chan image.Image) {
+	staticMapChannel <- googlemaps.GetStaticMap(address, location)
+}
+
+// StoreImage stores an image to the filesystem and the bucket
+func storeImage(filename string, image image.Image, storeChannel chan bool) {
+	buff := new(bytes.Buffer)
+
+	// encode image to buffer
+	err := png.Encode(buff, image)
+
+	if err != nil {
+		storeChannel <- false
+		fmt.Println("failed to create buffer for image "+filename, err)
+	}
+
+	err = ioutil.WriteFile("./"+filename, buff.Bytes(), 0644)
+
+	if err != nil {
+		storeChannel <- false
+		fmt.Println("failed to write for image "+filename, err)
+	}
+
+	storeChannel <- googlebucket.StoreObject(filename, filename)
 }

@@ -5,3 +5,7 @@ data/
 noResult/
 vendor/
 fellraces.json
+storagecreateauth.json
+*.png
+mapshelper.txt
+raceinfo.json
