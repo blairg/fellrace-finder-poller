@@ -1,5 +1,5 @@
 # build stage
-FROM golang:1.10.3-alpine3.8 AS build-env
+FROM golang:1.11.4-alpine3.8 AS build-env
 
 WORKDIR /go/src/github.com/blairg/fellrace-finder-poller/
 

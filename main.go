@@ -11,12 +11,13 @@ import (
 
 	"github.com/blairg/fellrace-finder-poller/download"
 	"github.com/blairg/fellrace-finder-poller/helpers"
+	"github.com/blairg/fellrace-finder-poller/models"
 	"github.com/blairg/fellrace-finder-poller/parseresults"
 	"github.com/blairg/fellrace-finder-poller/storage"
 )
 
-var results []parseresults.Result
-var races []parseresults.Race
+var results []models.Result
+var races []models.Race
 
 func main() {
 	app := cli.NewApp()

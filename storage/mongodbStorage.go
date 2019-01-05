@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/blairg/fellrace-finder-poller/parseresults"
+	"github.com/blairg/fellrace-finder-poller/models"
 	"github.com/globalsign/mgo"
 	"github.com/globalsign/mgo/bson"
 )
@@ -17,52 +17,13 @@ import (
 func FilterIds(ids []string, collectionName string) (filteredIds []string) {
 	fmt.Println("Getting ids")
 
-	mongoDbURL := os.Getenv("MONGO_DB_URL")
-
-	//var mongoDbURL = "localhost:27017"
-
-	if mongoDbURL == "" {
-		fmt.Println("MONGO_DB_URL not found")
-
-		return
-	}
-
-	dialInfo, err := mgo.ParseURL(mongoDbURL)
-
-	if err != nil {
-		panic(err)
-	}
-
-	//Below part is similar to above.
-	tlsConfig := &tls.Config{}
-	dialInfo.Timeout = 5 * time.Second
-	dialInfo.DialServer = func(addr *mgo.ServerAddr) (net.Conn, error) {
-		conn, err := tls.Dial("tcp", addr.String(), tlsConfig)
-
-		if err != nil {
-			panic(err)
-		}
-
-		return conn, err
-	}
-	session, dialError := mgo.DialWithInfo(dialInfo)
-
-	if dialError != nil {
-		panic(dialError)
-	}
-
-	// session, err := mgo.Dial("localhost")
-
-	// if err != nil {
-	// 	panic(err)
-	// }
-
-	fmt.Println("Connected to DB")
+	session := connect()
+	defer session.Close()
 
 	c := session.DB("fellraces").C(collectionName)
 
 	var idsFound []int
-	err = c.Find(bson.M{}).Distinct("id", &idsFound)
+	err := c.Find(bson.M{}).Distinct("id", &idsFound)
 
 	fmt.Println("database ids found", len(idsFound))
 
@@ -91,43 +52,15 @@ func FilterIds(ids []string, collectionName string) (filteredIds []string) {
 
 	fmt.Println(strconv.Itoa(len(filteredIds)) + " ids found")
 
-	defer session.Close()
-
 	return
 }
 
 // StoreManyResults stores all results in one foul swoop
-func StoreManyResults(resultData []parseresults.Result) {
+func StoreManyResults(resultData []models.Result) {
 	fmt.Println("Storing results in Mongo")
 
-	mongoDbURL := os.Getenv("MONGO_DB_URL")
-
-	if mongoDbURL == "" {
-		fmt.Println("MONGO_DB_URL not found")
-
-		return
-	}
-
-	dialInfo, err := mgo.ParseURL(mongoDbURL)
-
-	if err != nil {
-		panic(err)
-	}
-
-	//Below part is similar to above.
-	tlsConfig := &tls.Config{}
-	dialInfo.Timeout = 5 * time.Second
-	dialInfo.DialServer = func(addr *mgo.ServerAddr) (net.Conn, error) {
-		conn, err := tls.Dial("tcp", addr.String(), tlsConfig)
-		return conn, err
-	}
-	session, _ := mgo.DialWithInfo(dialInfo)
-
-	// session, err := mgo.Dial("localhost")
-
-	// if err != nil {
-	// 	panic(err)
-	// }
+	session := connect()
+	defer session.Close()
 
 	c := session.DB("fellraces").C("races")
 
@@ -151,37 +84,11 @@ func StoreManyResults(resultData []parseresults.Result) {
 }
 
 // StoreManyRaces stores all races in one foul swoop
-func StoreManyRaces(raceData []parseresults.Race) {
+func StoreManyRaces(raceData []models.Race) {
 	fmt.Println("Storing races in Mongo")
 
-	mongoDbURL := os.Getenv("MONGO_DB_URL")
-
-	if mongoDbURL == "" {
-		fmt.Println("MONGO_DB_URL not found")
-
-		return
-	}
-
-	dialInfo, err := mgo.ParseURL(mongoDbURL)
-
-	if err != nil {
-		panic(err)
-	}
-
-	//Below part is similar to above.
-	tlsConfig := &tls.Config{}
-	dialInfo.Timeout = 5 * time.Second
-	dialInfo.DialServer = func(addr *mgo.ServerAddr) (net.Conn, error) {
-		conn, err := tls.Dial("tcp", addr.String(), tlsConfig)
-		return conn, err
-	}
-	session, _ := mgo.DialWithInfo(dialInfo)
-
-	// session, err := mgo.Dial("localhost")
-
-	// if err != nil {
-	// 	panic(err)
-	// }
+	session := connect()
+	defer session.Close()
 
 	c := session.DB("fellraces").C("raceinfo")
 
@@ -202,4 +109,58 @@ func StoreManyRaces(raceData []parseresults.Race) {
 	}
 
 	fmt.Println("Inserted all races.....")
+}
+
+// GetRaceByAddress get race details by an address
+func GetRaceByAddress(address string) models.Race {
+	session := connect()
+	defer session.Close()
+
+	c := session.DB("fellraces").C("raceinfo")
+
+	var race models.Race
+	c.Find(bson.M{"venue": address}).One(&race)
+
+	return race
+}
+
+func connect() *mgo.Session {
+	mongoDbURL := os.Getenv("MONGO_DB_URL")
+
+	if mongoDbURL == "" {
+		fmt.Println("MONGO_DB_URL not found")
+
+		panic("MONGO_DB_URL not found")
+	}
+
+	dialInfo, err := mgo.ParseURL(mongoDbURL)
+
+	if err != nil {
+		panic(err)
+	}
+
+	tlsConfig := &tls.Config{}
+	dialInfo.Timeout = 5 * time.Second
+	dialInfo.DialServer = func(addr *mgo.ServerAddr) (net.Conn, error) {
+		conn, err := tls.Dial("tcp", addr.String(), tlsConfig)
+		return conn, err
+	}
+
+	if mongoDbURL != "mongodb://localhost:27017" {
+		session, err := mgo.DialWithInfo(dialInfo)
+
+		if err != nil {
+			panic(err)
+		}
+
+		return session
+	}
+
+	session, err := mgo.Dial("localhost")
+
+	if err != nil {
+		panic(err)
+	}
+
+	return session
 }
