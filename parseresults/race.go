@@ -18,76 +18,20 @@ import (
 	"golang.org/x/net/html"
 
 	"github.com/blairg/fellrace-finder-poller/googlemaps"
+	"github.com/blairg/fellrace-finder-poller/models"
+	"github.com/blairg/fellrace-finder-poller/services"
 )
 
-type geoLocationSearch struct {
-	geoLocation maps.LatLng
-	address     string
-}
-
-type distance struct {
-	Kilometers float32 `json:"kilometres"`
-	Miles      float32 `json:"miles"`
-}
-
-type climb struct {
-	Meters int `json:"meters"`
-	Feet   int `json:"feet"`
-}
-
-type entryFee struct {
-	OnDay    float32 `json:"onDay"`
-	PreEntry float32 `json:"preEntry"`
-}
-
-type recordDetails struct {
-	Name string `json:"name"`
-	Time string `json:"time"`
-	Year int    `json:"year"`
-}
-
-type records struct {
-	Male   recordDetails `json:"male"`
-	Female recordDetails `json:"female"`
-}
-
-type geoLocation struct {
-	Latitude  float64 `json:"latitude"`
-	Longitude float64 `json:"longitude"`
-}
-
-// Race type
-type Race struct {
-	ID               int         `json:"id"`
-	Name             string      `json:"name"`
-	Date             string      `json:"date"`
-	Time             string      `json:"time"`
-	Country          string      `json:"country"`
-	Region           string      `json:"region"`
-	Category         string      `json:"category"`
-	Website          string      `json:"website"`
-	Distance         distance    `json:"distance"`
-	Climb            climb       `json:"climb"`
-	Venue            string      `json:"venue"`
-	GeoLocation      geoLocation `json:"geoLocation"`
-	GMapImageURL     string      `json:"gmapImageUrl"`
-	GridReference    string      `json:"gridReference"`
-	SkillsExperience string      `json:"skillsExperience"`
-	MinimumAge       int         `json:"minimumAge"`
-	EntryFee         entryFee    `json:"entryFee"`
-	Records          records     `json:"records"`
-}
-
 // ParseRace extracts the races from the HTML
-func ParseRace(raceID, htmlContent string) Race {
+func ParseRace(raceID, htmlContent string) models.Race {
 	raceIDParsed, _ := strconv.ParseInt(raceID, 10, 32)
 	raceReader := strings.NewReader(htmlContent)
 
-	var parsedRace Race
+	var parsedRace models.Race
 	parsedRace.ID = int(raceIDParsed)
 	processRace(raceReader, &parsedRace)
 
-	var race Race
+	var race models.Race
 	race.ID = int(raceIDParsed)
 	race.Name = parsedRace.Name
 	race.Date = parsedRace.Date
@@ -123,11 +67,11 @@ func isValidHTMLTag(htmlTag string) bool {
 	return false
 }
 
-func processRace(reader io.Reader, race *Race) {
+func processRace(reader io.Reader, race *models.Race) {
 	var wg sync.WaitGroup
 	wg.Add(1)
 
-	go func(race *Race) {
+	go func(race *models.Race) {
 		defer wg.Done()
 		parseHTML(reader, race)
 	}(race)
@@ -153,7 +97,7 @@ func splitRaceName(raceName string) string {
 	return strings.TrimLeft(strings.TrimRight(strings.Replace(nameSplit[1], "(R)", "", 1), " "), " ")
 }
 
-func getRaceName(isRaceName *bool, race *Race, token html.Token) string {
+func getRaceName(isRaceName *bool, race *models.Race, token html.Token) string {
 	if *isRaceName && race.Name == "" {
 		*isRaceName = false
 
@@ -241,7 +185,7 @@ func isRaceDateAndTimeToken(token html.Token) bool {
 	return false
 }
 
-func getRaceDateAndTime(isDateAndTime *bool, race *Race, token html.Token) []string {
+func getRaceDateAndTime(isDateAndTime *bool, race *models.Race, token html.Token) []string {
 	if *isDateAndTime && race.Date == "" {
 		*isDateAndTime = false
 
@@ -258,8 +202,8 @@ func getRaceDateAndTime(isDateAndTime *bool, race *Race, token html.Token) []str
 //
 
 // Distance
-func splitDistance(distanceToSplit string) distance {
-	var distanceType distance
+func splitDistance(distanceToSplit string) models.Distance {
+	var distanceType models.Distance
 	trimmedDistance := strings.TrimRight(strings.TrimLeft(distanceToSplit, " "), " ")
 	trimmedDistance = strings.Replace(trimmedDistance, "\n", "", -1)
 	trimmedDistance = strings.Replace(trimmedDistance, "\t", "", -1)
@@ -284,8 +228,8 @@ func isDistance(token html.Token) bool {
 	return false
 }
 
-func getDistance(isDistance *bool, race *Race, token html.Token) distance {
-	var distance distance
+func getDistance(isDistance *bool, race *models.Race, token html.Token) models.Distance {
+	var distance models.Distance
 
 	if *isDistance && race.Distance.Kilometers == 0 {
 		*isDistance = false
@@ -303,8 +247,8 @@ func getDistance(isDistance *bool, race *Race, token html.Token) distance {
 //
 
 // Climb
-func splitClimb(climbToSplit string) climb {
-	var climbType climb
+func splitClimb(climbToSplit string) models.Climb {
+	var climbType models.Climb
 	trimmedClimb := strings.TrimRight(strings.TrimLeft(climbToSplit, " "), " ")
 	trimmedClimb = strings.Replace(trimmedClimb, "\n", "", -1)
 	trimmedClimb = strings.Replace(trimmedClimb, "\t", "", -1)
@@ -329,8 +273,8 @@ func isClimb(token html.Token) bool {
 	return false
 }
 
-func getClimb(isClimb *bool, race *Race, token html.Token) climb {
-	var climb climb
+func getClimb(isClimb *bool, race *models.Race, token html.Token) models.Climb {
+	var climb models.Climb
 
 	if *isClimb && race.Climb.Meters == 0 {
 		*isClimb = false
@@ -352,8 +296,8 @@ func splitRecordToken(r rune) bool {
 	return r == '$'
 }
 
-func splitRecords(recordToSplit string) recordDetails {
-	var recordDetailsType recordDetails
+func splitRecords(recordToSplit string) models.RecordDetails {
+	var recordDetailsType models.RecordDetails
 
 	if strings.Contains(recordToSplit, "No record information") {
 		return recordDetailsType
@@ -391,8 +335,8 @@ func isMaleRecord(token html.Token) bool {
 	return false
 }
 
-func getFemaleRecord(isRecord *bool, race *Race, token html.Token) recordDetails {
-	var femaleRecord recordDetails
+func getFemaleRecord(isRecord *bool, race *models.Race, token html.Token) models.RecordDetails {
+	var femaleRecord models.RecordDetails
 
 	if *isRecord && race.Records.Female.Name == "" {
 		*isRecord = false
@@ -407,8 +351,8 @@ func getFemaleRecord(isRecord *bool, race *Race, token html.Token) recordDetails
 	return femaleRecord
 }
 
-func getMaleRecord(isRecord *bool, race *Race, token html.Token) recordDetails {
-	var maleRecord recordDetails
+func getMaleRecord(isRecord *bool, race *models.Race, token html.Token) models.RecordDetails {
+	var maleRecord models.RecordDetails
 
 	if *isRecord && race.Records.Male.Name == "" {
 		*isRecord = false
@@ -442,7 +386,7 @@ func isVenue(token html.Token) bool {
 	return false
 }
 
-func getVenue(isVenue *bool, race *Race, token html.Token) string {
+func getVenue(isVenue *bool, race *models.Race, token html.Token) string {
 	var venue string
 
 	if *isVenue && race.Venue == "" {
@@ -460,7 +404,7 @@ func getVenue(isVenue *bool, race *Race, token html.Token) string {
 
 //
 
-func parseHTML(r io.Reader, race *Race) {
+func parseHTML(r io.Reader, race *models.Race) {
 	d := html.NewTokenizer(r)
 	isRaceName := false
 	isDateAndTime := false
@@ -558,16 +502,16 @@ func parseHTML(r io.Reader, race *Race) {
 					venue := getVenue(&isVenueFound, race, token)
 					race.Venue = venue
 
-					geoLocationChannel := make(chan geoLocationSearch)
+					geoLocationChannel := make(chan models.GeoLocationSearch)
 					go getCoordinates(venue, geoLocationChannel)
 					geoLocationResult := <-geoLocationChannel
 
-					if geoLocationResult.address != "" {
-						race.GeoLocation.Latitude = geoLocationResult.geoLocation.Lat
-						race.GeoLocation.Longitude = geoLocationResult.geoLocation.Lng
+					if geoLocationResult.Address != "" {
+						race.GeoLocation.Latitude = geoLocationResult.GeoLocation.Lat
+						race.GeoLocation.Longitude = geoLocationResult.GeoLocation.Lng
 
 						staticMapChannel := make(chan image.Image)
-						go getStaticMap(geoLocationResult.address, geoLocationResult.geoLocation, staticMapChannel)
+						go getStaticMap(geoLocationResult.Address, geoLocationResult.GeoLocation, staticMapChannel)
 						staticMapImage := <-staticMapChannel
 
 						if staticMapImage != nil {
@@ -595,11 +539,12 @@ func parseHTML(r io.Reader, race *Race) {
 	}
 }
 
-func getCoordinates(address string, geoLocationChannel chan geoLocationSearch) {
-	var geoSearch geoLocationSearch
-	coordinatesResult, addressResult := googlemaps.GetCoordinates(address)
-	geoSearch.geoLocation = coordinatesResult
-	geoSearch.address = addressResult
+func getCoordinates(address string, geoLocationChannel chan models.GeoLocationSearch) {
+	geoLocation := services.GetCoordinates(address)
+
+	var geoSearch models.GeoLocationSearch
+	geoSearch.GeoLocation = geoLocation
+	geoSearch.Address = address
 
 	geoLocationChannel <- geoSearch
 }
